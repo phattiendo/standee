@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/config/app_config.dart';
 import '../../core/network/socket_client.dart';
+import '../../data/datasources/mock_datasource.dart';
 import '../../data/datasources/sdp_datasource.dart';
 import '../../data/models/air_quality_model.dart';
 import '../../data/models/speed_test_model.dart';
@@ -44,7 +46,7 @@ class SdpController {
     _initializing = true;
 
     _posterUrl = posterUrl;
-    debugPrint('SdpController: init started');
+    debugPrint('SdpController: init started (mock=${AppConfig.useMockData})');
 
     try {
       // 1. Init datasource
@@ -55,7 +57,7 @@ class SdpController {
         },
       );
 
-      // 2. Load data từ cache
+      // 2. Load data (từ cache hoặc mock)
       try {
         final cached = await _dataSource.loadAllFromCache().timeout(
           const Duration(seconds: 2),
@@ -63,22 +65,29 @@ class SdpController {
         _airQuality = cached.airQuality;
         _speedTest = cached.speedTest;
         _standeeInfo = cached.standeeInfo;
-        debugPrint('SdpController: loaded data from cache');
+        debugPrint('SdpController: loaded data');
       } catch (_) {}
 
-      // 3. Weather via WebSocket
-      unawaited(WeatherSocketClient.I.init());
-      _weatherSub = WeatherSocketClient.I.weatherStream.listen(_onWeatherData);
-      final cachedWeather = WeatherSocketClient.I.lastWeatherData;
-      if (cachedWeather != null) {
-        _weather = cachedWeather;
+      // 3. Weather - mock hoặc WebSocket
+      if (AppConfig.useMockData) {
+        await MockDataSource.I.init();
+        _weather = MockDataSource.I.getWeather();
+      } else {
+        unawaited(WeatherSocketClient.I.init());
+        _weatherSub = WeatherSocketClient.I.weatherStream.listen(_onWeatherData);
+        final cachedWeather = WeatherSocketClient.I.lastWeatherData;
+        if (cachedWeather != null) {
+          _weather = cachedWeather;
+        }
       }
 
       _initialized = true;
       _notifyChanged();
 
-      // 4. Fetch từ API background
-      unawaited(_fetchFromApi());
+      // 4. Fetch từ API background (chỉ khi không mock)
+      if (!AppConfig.useMockData) {
+        unawaited(_fetchFromApi());
+      }
 
       debugPrint('SdpController: init completed');
     } catch (e) {
@@ -96,6 +105,8 @@ class SdpController {
   }
 
   Future<void> _fetchFromApi() async {
+    if (AppConfig.useMockData) return;
+
     _isLoading = true;
     _notifyChanged();
 
@@ -139,14 +150,21 @@ class SdpController {
       _speedTest = cached.speedTest;
       _standeeInfo = cached.standeeInfo;
 
-      unawaited(WeatherSocketClient.I.init());
-      final cachedWeather = WeatherSocketClient.I.lastWeatherData;
-      if (cachedWeather != null) {
-        _weather = cachedWeather;
+      if (AppConfig.useMockData) {
+        _weather = MockDataSource.I.getWeather();
+      } else {
+        unawaited(WeatherSocketClient.I.init());
+        final cachedWeather = WeatherSocketClient.I.lastWeatherData;
+        if (cachedWeather != null) {
+          _weather = cachedWeather;
+        }
       }
 
       _notifyChanged();
-      unawaited(_fetchFromApi());
+      
+      if (!AppConfig.useMockData) {
+        unawaited(_fetchFromApi());
+      }
     } catch (e) {
       debugPrint('SdpController preload error: $e');
     }
