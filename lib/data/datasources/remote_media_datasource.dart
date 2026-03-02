@@ -1,25 +1,16 @@
 import 'package:dio/dio.dart';
 
-import '../../core/config/app_config.dart';
 import '../../core/constants/api_constants.dart';
 import '../../core/network/dio_client.dart';
 import '../models/media_item_model.dart';
-import 'mock_datasource.dart';
 
-/// Lấy danh sách media (image + video) từ API standee hoặc mock data.
+/// Lấy danh sách media (image + video) từ API standee.
 class RemoteMediaDataSource {
   RemoteMediaDataSource({Dio? dio}) : _dio = dio ?? DioClient.I.client;
 
   final Dio _dio;
 
   Future<List<MediaItem>> fetchMediaList() async {
-    // Nếu dùng mock data
-    if (AppConfig.useMockData) {
-      await MockDataSource.I.init();
-      return MockDataSource.I.getMediaList();
-    }
-
-    // Gọi API thật
     final res = await _dio.get(ApiConstants.playlistPath);
     final data = res.data;
     final list = _extractPosterList(data);

@@ -3,16 +3,14 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
-import '../../core/config/app_config.dart';
 import '../../core/constants/api_constants.dart';
 import '../../core/network/dio_client.dart';
 import '../models/air_quality_model.dart';
 import '../models/speed_test_model.dart';
 import '../models/standee_info_model.dart';
-import 'mock_datasource.dart';
 import 'sdp_cache.dart';
 
-/// DataSource để fetch dữ liệu cho SDP với cache và mock support
+/// DataSource để fetch dữ liệu cho SDP với cache
 class SdpDataSource {
   SdpDataSource({Dio? dio}) : _dio = dio ?? DioClient.I.client;
 
@@ -21,23 +19,12 @@ class SdpDataSource {
 
   Future<void> init() async {
     if (_initialized) return;
-    
-    if (AppConfig.useMockData) {
-      await MockDataSource.I.init();
-    }
     await SdpCache.I.init();
     _initialized = true;
   }
 
   /// Fetch Air Quality
   Future<AirQualityData> fetchAirQuality({bool forceRefresh = false}) async {
-    // Mock mode
-    if (AppConfig.useMockData) {
-      await MockDataSource.I.init();
-      return MockDataSource.I.getAirQuality();
-    }
-
-    // Real API
     if (!forceRefresh && SdpCache.I.isAqiCacheValid()) {
       final cached = await SdpCache.I.loadAirQuality();
       if (cached != null && !cached.isEmpty) {
@@ -73,13 +60,6 @@ class SdpDataSource {
 
   /// Fetch Speed Test
   Future<SpeedTestData> fetchSpeedTest({bool forceRefresh = false}) async {
-    // Mock mode
-    if (AppConfig.useMockData) {
-      await MockDataSource.I.init();
-      return MockDataSource.I.getSpeedTest();
-    }
-
-    // Real API
     if (!forceRefresh && SdpCache.I.isSpeedCacheValid()) {
       final cached = await SdpCache.I.loadSpeedTest();
       if (cached != null && !cached.isEmpty) {
@@ -123,13 +103,6 @@ class SdpDataSource {
 
   /// Fetch Standee Info
   Future<StandeeInfo> fetchStandeeInfo({bool forceRefresh = false}) async {
-    // Mock mode
-    if (AppConfig.useMockData) {
-      await MockDataSource.I.init();
-      return MockDataSource.I.getStandeeInfo();
-    }
-
-    // Real API
     if (!forceRefresh && SdpCache.I.isStandeeCacheValid()) {
       final cached = await SdpCache.I.loadStandeeInfo();
       if (cached != null && !cached.isEmpty) {
@@ -185,18 +158,9 @@ class SdpDataSource {
     );
   }
 
-  /// Load tất cả từ cache hoặc mock
+  /// Load tất cả từ cache
   Future<SdpFetchResult> loadAllFromCache() async {
     if (!_initialized) await init();
-
-    // Mock mode - trả về mock data luôn
-    if (AppConfig.useMockData) {
-      return SdpFetchResult(
-        airQuality: MockDataSource.I.getAirQuality(),
-        speedTest: MockDataSource.I.getSpeedTest(),
-        standeeInfo: MockDataSource.I.getStandeeInfo(),
-      );
-    }
 
     final results = await Future.wait([
       SdpCache.I.loadAirQuality(),
