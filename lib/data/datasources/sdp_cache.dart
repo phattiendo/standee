@@ -32,7 +32,7 @@ class SdpCache {
 
     try {
       _box = await Hive.openBox<String>(_boxName).timeout(
-        const Duration(seconds: 3),
+        const Duration(seconds: 8),
         onTimeout: () {
           debugPrint('SdpCache: Hive open timeout');
           throw Exception('Hive timeout');

@@ -1,13 +1,19 @@
+import 'dart:io' as io;
+
 import 'package:flutter/material.dart';
 
-import '../../core/config/slideshow_config.dart';
+import '../../core/storage/rom_media_storage.dart';
 import '../../data/models/media_item_model.dart';
 import '../controllers/slideshow_controller.dart';
 import 'media_image_widget.dart';
 import 'media_video_widget.dart';
-import 'sdp/liquid_glass_container.dart';
 import 'sdp/media_sdp_widget.dart';
 
+/// Fade transition giữa 2 layer (200ms).
+const Duration _kFadeDuration = Duration(milliseconds: 200);
+
+/// Slideshow: Controller quản lý preload. UI chỉ render.
+/// Double buffer: 2 layer (current + next), fade khi chuyển, evict ảnh cũ.
 class SlideshowWidget extends StatefulWidget {
   const SlideshowWidget({super.key});
 
@@ -20,10 +26,7 @@ class _SlideshowWidgetState extends State<SlideshowWidget> {
 
   List<MediaItem> _items = [];
   int _currentIndex = 0;
-  
-  // Flag để delay khi chuyển từ video
-  bool _transitioningFromVideo = false;
-  MediaItem? _previousItem;
+  int _visibleLayer = 0;
 
   @override
   void initState() {
@@ -31,56 +34,71 @@ class _SlideshowWidgetState extends State<SlideshowWidget> {
 
     _controller = SlideshowController(
       onMediaChanged: _onMediaChanged,
+      getDisplayUrl: _displayUrl,
       onPreloadImage: (url) {
-        if (mounted && !url.startsWith('asset:')) {
+        if (!mounted) return;
+        if (url.startsWith('/') || _isFilePath(url)) {
+          precacheImage(FileImage(io.File(url)), context).catchError((_) {});
+        } else if (!url.startsWith('asset:')) {
           precacheImage(NetworkImage(url), context).catchError((_) {});
         }
+      },
+      onPreloadVideo: (_) {
+        // Preload video = chỉ check file; không open player. Chỉ open khi play.
+      },
+      onReleaseImage: (url) {
+        if (!mounted) return;
+        try {
+          if (url.startsWith('/') || io.File(url).existsSync()) {
+            PaintingBinding.instance.imageCache.evict(FileImage(io.File(url)));
+          } else if (url.startsWith('http')) {
+            PaintingBinding.instance.imageCache.evict(NetworkImage(url));
+          }
+        } catch (_) {}
       },
     );
 
     _controller.init();
+  }
 
-    SlideshowConfig.I.addListener(_onConfigChanged);
+  bool _isFilePath(String url) {
+    if (url.isEmpty) return false;
+    if (url.startsWith('http')) return false;
+    return io.File(url).existsSync();
+  }
+
+  String _displayUrl(MediaItem item) {
+    final lp = item.localPath;
+    if (lp != null && lp.isNotEmpty && !lp.startsWith('/')) {
+      final full = RomMediaStorage.I.fullPath(lp);
+      if (full != null) return full;
+    }
+    return item.playbackUrl;
   }
 
   void _onMediaChanged(MediaItem? current, int index, List<MediaItem> all) {
     if (!mounted) return;
-    
-    final wasVideo = _previousItem?.type == MediaType.video;
-    final isVideo = current?.type == MediaType.video;
-    
-    // Nếu chuyển TỪ video sang media khác, cần delay
-    if (wasVideo && !isVideo) {
-      _transitioningFromVideo = true;
-      setState(() {});
-      
-      // Delay 400ms cho MediaCodec release
-      Future.delayed(const Duration(milliseconds: 400), () {
-        if (mounted) {
-          setState(() {
-            _transitioningFromVideo = false;
-            _items = all;
-            _currentIndex = index;
-            _previousItem = current;
-          });
-        }
-      });
-    } else {
-      setState(() {
-        _items = all;
-        _currentIndex = index;
-        _previousItem = current;
-      });
-    }
-  }
+    setState(() {
+      final prevCount = _items.length;
+      _items = all;
+      final newIndex = index;
+      final n = _items.length;
 
-  void _onConfigChanged() {
-    if (mounted) setState(() {});
+      if (n == 0) return;
+
+      if (prevCount == 0 || n < 2) {
+        _currentIndex = newIndex;
+        _visibleLayer = 0;
+        return;
+      }
+
+      _currentIndex = newIndex;
+      _visibleLayer = 1 - _visibleLayer;
+    });
   }
 
   @override
   void dispose() {
-    SlideshowConfig.I.removeListener(_onConfigChanged);
     _controller.dispose();
     super.dispose();
   }
@@ -90,60 +108,69 @@ class _SlideshowWidgetState extends State<SlideshowWidget> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Main content
         _buildContent(),
-
-        // Page indicator
-        if (_items.isNotEmpty && 
-            !_transitioningFromVideo &&
-            _items[_currentIndex].type != MediaType.sdp)
+        if (_items.isNotEmpty && _items[_currentIndex].type != MediaType.sdp)
           _buildPageIndicator(),
-
-        // Debug panel
-        if (_showDebugPanel) _buildDebugPanel(),
       ],
     );
   }
 
-  // Đặt false khi release
-  bool get _showDebugPanel => true;
-
   Widget _buildContent() {
-    // Hiện loading khi đang transition từ video
-    if (_transitioningFromVideo) {
+    if (_items.isEmpty) {
       return const ColoredBox(
         color: Colors.black,
         child: Center(
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: Colors.white30,
-          ),
+          child: CircularProgressIndicator(color: Colors.white54, strokeWidth: 2),
         ),
       );
     }
-    
-    if (_items.isEmpty) {
-      return const _LoadingState();
+
+    final n = _items.length;
+    if (n < 2) {
+      return RepaintBoundary(
+        key: ValueKey('slide-$_currentIndex-${_items[_currentIndex].id}'),
+        child: _buildMediaItem(_items[_currentIndex]),
+      );
     }
 
-    final current = _items[_currentIndex];
+    final layer0Index = _visibleLayer == 0 ? _currentIndex : (_currentIndex + 1) % n;
+    final layer1Index = _visibleLayer == 1 ? _currentIndex : (_currentIndex + 1) % n;
 
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 500),
-      child: KeyedSubtree(
-        key: ValueKey('${current.type}-$_currentIndex-${current.url.hashCode}'),
-        child: _buildMediaItem(current),
-      ),
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Positioned.fill(
+          child: AnimatedOpacity(
+            duration: _kFadeDuration,
+            opacity: _visibleLayer == 0 ? 1 : 0,
+            child: RepaintBoundary(
+              key: ValueKey('layer0-$layer0Index-${_items[layer0Index].id}'),
+              child: _buildMediaItem(_items[layer0Index]),
+            ),
+          ),
+        ),
+        Positioned.fill(
+          child: AnimatedOpacity(
+            duration: _kFadeDuration,
+            opacity: _visibleLayer == 1 ? 1 : 0,
+            child: RepaintBoundary(
+              key: ValueKey('layer1-$layer1Index-${_items[layer1Index].id}'),
+              child: _buildMediaItem(_items[layer1Index]),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildMediaItem(MediaItem item) {
+    final url = _displayUrl(item);
     switch (item.type) {
       case MediaType.image:
-        return MediaImageWidget(url: item.url);
+        return MediaImageWidget(url: url);
       case MediaType.video:
         return MediaVideoWidget(
-          url: item.url,
+          url: url,
           onVideoStarted: _controller.notifyVideoStarted,
           onVideoEnded: _controller.notifyVideoEnded,
         );
@@ -151,7 +178,6 @@ class _SlideshowWidgetState extends State<SlideshowWidget> {
         return MediaSdpWidget(
           posterUrl: item.url.isNotEmpty ? item.url : null,
           backgroundAsset: item.sdpBackgroundAsset,
-          glassType: GlassType.backdrop,
         );
     }
   }
@@ -170,83 +196,6 @@ class _SlideshowWidgetState extends State<SlideshowWidget> {
           '${_currentIndex + 1}/${_items.length}',
           style: const TextStyle(color: Colors.white70, fontSize: 12),
         ),
-      ),
-    );
-  }
-
-  Widget _buildDebugPanel() {
-    final config = SlideshowConfig.I;
-
-    return Positioned(
-      top: 50,
-      right: 10,
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: Colors.black87,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Debug', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
-            _buildSwitch('SDP', config.enableSdp, (v) => config.enableSdp = v),
-            _buildSwitch('Poster', config.enablePoster, (v) => config.enablePoster = v),
-            _buildSwitch('Video', config.enableVideo, (v) => config.enableVideo = v),
-            _buildSwitch('Audio', config.enableAudio, (v) => config.enableAudio = v),
-            const SizedBox(height: 4),
-            _buildBtn('Only SDP', config.onlySdp),
-            _buildBtn('Only Video', config.onlyVideo),
-            _buildBtn('All ON', config.enableAll),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSwitch(String label, bool value, ValueChanged<bool> onChanged) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(width: 50, child: Text(label, style: const TextStyle(color: Colors.white70, fontSize: 10))),
-        SizedBox(
-          height: 20,
-          width: 36,
-          child: Switch(
-            value: value,
-            onChanged: onChanged,
-            activeTrackColor: Colors.green,
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBtn(String label, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(top: 2),
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(4)),
-        child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 9)),
-      ),
-    );
-  }
-}
-
-class _LoadingState extends StatelessWidget {
-  const _LoadingState();
-
-  @override
-  Widget build(BuildContext context) {
-    return const ColoredBox(
-      color: Colors.black,
-      child: Center(
-        child: CircularProgressIndicator(color: Colors.white54, strokeWidth: 2),
       ),
     );
   }

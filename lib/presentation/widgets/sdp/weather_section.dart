@@ -42,7 +42,7 @@ class WeatherSection extends StatelessWidget {
                     _getDateString(),
                     style: TextStyle(
                       color: Colors.white70,
-                      fontSize: 14 * scale,
+                      fontSize: 20 * scale,
                     ),
                   ),
                 ],
@@ -55,14 +55,14 @@ class WeatherSection extends StatelessWidget {
                   _getTimeString(),
                   style: TextStyle(
                     color: Colors.white70,
-                    fontSize: 14 * scale,
+                    fontSize: 20 * scale,
                   ),
                 ),
                 Text(
                   'Updated',
                   style: TextStyle(
                     color: Colors.white54,
-                    fontSize: 12 * scale,
+                    fontSize: 14 * scale,
                   ),
                 ),
               ],
@@ -96,7 +96,7 @@ class WeatherSection extends StatelessWidget {
                         '${weather.temperature.round()}',
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 80 * scale,
+                          fontSize: 120 * scale,
                           fontWeight: FontWeight.bold,
                           height: 1,
                         ),
@@ -105,7 +105,7 @@ class WeatherSection extends StatelessWidget {
                         '°',
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 40 * scale,
+                          fontSize: 60 * scale,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -157,7 +157,7 @@ class WeatherSection extends StatelessWidget {
           value,
           style: TextStyle(
             color: Colors.white,
-            fontSize: 42 * scale,
+            fontSize: 52 * scale,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -199,7 +199,7 @@ class WeatherSection extends StatelessWidget {
                 '${forecast.temperature.round()}°',
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: 18 * scale,
+                  fontSize: 24 * scale,
                   fontWeight: FontWeight.bold,
                 ),
               ),

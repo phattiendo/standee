@@ -55,7 +55,7 @@ class SlideshowConfig extends ChangeNotifier {
   String backgroundMusicPath = 'assets/emlakothe.mp3';
 
   /// Path video local (test)
-  String localVideoPath = 'assets/catoon.mp4';
+  String localVideoPath = 'assets/catoon1.mp4';
 
   /// Duration mặc định cho video (giây)
   int videoDurationSeconds = 30;

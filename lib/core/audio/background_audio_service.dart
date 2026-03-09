@@ -27,22 +27,36 @@ class BackgroundAudioService {
   bool get isPlaying => _player?.playing ?? false;
   double get volume => _player?.volume ?? 1.0;
 
-  /// Khởi tạo audio - không block, chạy background
-  Future<void> init({String assetPath = 'assets/emlakothe.mp3'}) async {
+  /// Khởi tạo audio - không block, chạy background.
+  /// Nếu [filePath] có (nhạc đã copy vào ROM) thì phát từ file, không thì phát từ [assetPath].
+  Future<void> init({
+    String assetPath = 'assets/emlakothe.mp3',
+    String? filePath,
+  }) async {
     if (_initialized || _initializing) return;
     _initializing = true;
 
     try {
       _player = AudioPlayer();
 
-      // Load với timeout
-      await _player!.setAsset(assetPath).timeout(
-        const Duration(seconds: 5),
-        onTimeout: () {
-          debugPrint('Audio load timeout');
-          return const Duration(seconds: 0);
-        },
-      );
+      final useFile = filePath != null && filePath.isNotEmpty;
+      if (useFile) {
+        await _player!.setUrl('file://$filePath').timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            debugPrint('Audio load timeout');
+            return const Duration(seconds: 0);
+          },
+        );
+      } else {
+        await _player!.setAsset(assetPath).timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            debugPrint('Audio load timeout');
+            return const Duration(seconds: 0);
+          },
+        );
+      }
 
       await _player!.setLoopMode(LoopMode.one);
       await _player!.setVolume(1.0);

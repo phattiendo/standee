@@ -1,15 +1,16 @@
-import 'dart:math' as math;
+import 'dart:io';
 import 'dart:ui';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
 
+import '../../../core/constants/api_constants.dart';
 import '../../controllers/sdp_controller.dart';
 import 'aqi_section.dart';
 import 'health_advice_section.dart';
-import 'liquid_glass_container.dart';
 import 'speed_section.dart';
+import 'weather_ambient_overlay.dart';
 import 'weather_section.dart';
 
 /// Widget chính hiển thị SDP (Special Dynamic Poster)
@@ -25,14 +26,12 @@ class MediaSdpWidget extends StatefulWidget {
   final String? posterUrl;
   final String? backgroundAsset;
   final bool showPoster;
-  final GlassType glassType;
 
   const MediaSdpWidget({
     super.key,
     this.posterUrl,
     this.backgroundAsset,
     this.showPoster = true,
-    this.glassType = GlassType.backdrop,
   });
 
   @override
@@ -47,17 +46,9 @@ class _MediaSdpWidgetState extends State<MediaSdpWidget> {
   static const double _designHeight = 1920;
   static const double _blurSigma = 18.0;
 
-  late final LiquidGlassSettings _glassSettings;
-
   @override
   void initState() {
     super.initState();
-    _glassSettings = LiquidGlassSettings(
-      thickness: _blurSigma,
-      lightAngle: 0.5 * math.pi,
-      chromaticAberration: 1,
-    );
-
     _controller = SdpController(
       onDataChanged: (data) {
         if (mounted) {
@@ -74,6 +65,11 @@ class _MediaSdpWidgetState extends State<MediaSdpWidget> {
     super.dispose();
   }
 
+  bool get _hasNoDataYet =>
+      _data.weather.isEmpty &&
+      _data.airQuality.isEmpty &&
+      _data.speedTest.isEmpty;
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -88,6 +84,22 @@ class _MediaSdpWidgetState extends State<MediaSdpWidget> {
           decoration: _buildBackground(),
           child: Stack(
             children: [
+              if (_data.isLoading || _hasNoDataYet)
+                Positioned.fill(
+                  child: Container(
+                    color: Colors.black38,
+                    alignment: Alignment.center,
+                    child: Text(
+                      _data.isLoading
+                          ? 'Đang tải dữ liệu...'
+                          : 'Đang kết nối thời tiết & mạng...',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20 * scale,
+                      ),
+                    ),
+                  ),
+                ),
               Positioned(
                 top: 25 * scaleY,
                 left: 24 * scaleX,
@@ -101,14 +113,35 @@ class _MediaSdpWidgetState extends State<MediaSdpWidget> {
               Positioned(
                 top: 170 * scaleY,
                 left: 21 * scaleX,
-                child: _buildGlassSection(
-                  width: 1035 * scaleX,
-                  height: 582 * scaleY,
-                  borderRadius: 24 * scale,
-                  child: WeatherSection(
-                    weather: _data.weather,
-                    scale: scale,
-                  ),
+                child: Stack(
+                  children: [
+                    _buildGlassSection(
+                      width: 1035 * scaleX,
+                      height: 582 * scaleY,
+                      borderRadius: 24 * scale,
+                      child: const SizedBox.shrink(),
+                    ),
+                    Positioned.fill(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(24 * scale),
+                        child: WeatherAmbientOverlay(
+                          weather: _data.weather,
+                          enabled: true,
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 1035 * scaleX,
+                      height: 582 * scaleY,
+                      child: Padding(
+                        padding: EdgeInsets.all(16 * (1035 * scaleX / 500)),
+                        child: WeatherSection(
+                          weather: _data.weather,
+                          scale: scale,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Positioned(
@@ -166,13 +199,6 @@ class _MediaSdpWidgetState extends State<MediaSdpWidget> {
           ),
         );
 
-        if (widget.glassType == GlassType.liquidGlass) {
-          return LiquidGlassLayer(
-            settings: _glassSettings,
-            child: content,
-          );
-        }
-
         return content;
       },
     );
@@ -196,30 +222,12 @@ class _MediaSdpWidgetState extends State<MediaSdpWidget> {
       ),
     );
 
-    switch (widget.glassType) {
-      case GlassType.liquidGlass:
-        final shape = LiquidRoundedRectangle(borderRadius: borderRadius);
-        return LiquidGlass(
-          shape: shape,
-          child: content,
-        );
-
-      case GlassType.fakeGlass:
-        final shape = LiquidRoundedRectangle(borderRadius: borderRadius);
-        return FakeGlass(
-          shape: shape,
-          settings: _glassSettings,
-          child: content,
-        );
-
-      case GlassType.backdrop:
-        return _buildBackdropGlass(
-          width: width,
-          height: height,
-          borderRadius: borderRadius,
-          child: content,
-        );
-    }
+    return _buildBackdropGlass(
+      width: width,
+      height: height,
+      borderRadius: borderRadius,
+      child: content,
+    );
   }
 
   Widget _buildBackdropGlass({
@@ -279,7 +287,9 @@ class _MediaSdpWidgetState extends State<MediaSdpWidget> {
   }
 
   BoxDecoration _buildBackground() {
-    final bgAsset = widget.backgroundAsset;
+    final bgAsset = (widget.backgroundAsset != null && widget.backgroundAsset!.isNotEmpty)
+        ? widget.backgroundAsset
+        : ApiConstants.sdpDefaultBackground;
     if (bgAsset != null && bgAsset.isNotEmpty) {
       return BoxDecoration(
         image: DecorationImage(
@@ -349,16 +359,50 @@ class _MediaSdpWidgetState extends State<MediaSdpWidget> {
   }
 
   Widget _buildPosterContent(double scale) {
+    final posterUrl = _data.posterUrl ?? widget.posterUrl;
     return ClipRRect(
       borderRadius: BorderRadius.circular(16 * scale),
-      child: Image.asset(
+      child: _buildPosterImage(posterUrl, scale),
+    );
+  }
+
+  Widget _buildPosterImage(String? url, double scale) {
+    if (url == null || url.isEmpty) {
+      return Image.asset(
         'assets/image 1.png',
-        fit: BoxFit.cover,
+        fit: BoxFit.contain,
         width: double.infinity,
         height: double.infinity,
-        errorBuilder: (context, error, stackTrace) =>
-            _buildPosterPlaceholder(scale),
-      ),
+        errorBuilder: (_, __, ___) => _buildPosterPlaceholder(scale),
+      );
+    }
+    final placeholder = _buildPosterPlaceholder(scale);
+    if (url.startsWith('/') || url.startsWith('file://')) {
+      final path = url.startsWith('file://') ? url.substring(7) : url;
+      return Image.file(
+        File(path),
+        fit: BoxFit.contain,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (_, __, ___) => placeholder,
+      );
+    }
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return CachedNetworkImage(
+        imageUrl: url,
+        fit: BoxFit.contain,
+        width: double.infinity,
+        height: double.infinity,
+        placeholder: (_, __) => placeholder,
+        errorWidget: (_, __, ___) => placeholder,
+      );
+    }
+    return Image.asset(
+      'assets/image 1.png',
+      fit: BoxFit.contain,
+      width: double.infinity,
+      height: double.infinity,
+      errorBuilder: (_, __, ___) => placeholder,
     );
   }
 

@@ -17,6 +17,15 @@ class ConnectivityService {
 
   Stream<bool> get onStatusChanged => _controller.stream;
 
+  /// Trạng thái mạng hiện tại (sau khi init).
+  Future<bool> get isOnline async {
+    final results = await _connectivity.checkConnectivity();
+    return results.any((r) =>
+        r == ConnectivityResult.wifi ||
+        r == ConnectivityResult.mobile ||
+        r == ConnectivityResult.ethernet);
+  }
+
   Future<void> init() async {
     _subscription?.cancel();
     _subscription = _connectivity.onConnectivityChanged.listen(_onChanged);

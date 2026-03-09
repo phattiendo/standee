@@ -1,25 +1,30 @@
 import 'package:dio/dio.dart';
 
-import '../../core/config/app_config.dart';
 import '../../core/constants/api_constants.dart';
 import '../../core/network/dio_client.dart';
 import '../models/media_item_model.dart';
-import 'mock_datasource.dart';
 
-/// Lấy danh sách media (image + video) từ API standee hoặc mock data.
+/// Lấy danh sách media (image + video) từ API standee.
 class RemoteMediaDataSource {
   RemoteMediaDataSource({Dio? dio}) : _dio = dio ?? DioClient.I.client;
 
   final Dio _dio;
 
-  Future<List<MediaItem>> fetchMediaList() async {
-    // Nếu dùng mock data
-    if (AppConfig.useMockData) {
-      await MockDataSource.I.init();
-      return MockDataSource.I.getMediaList();
+  /// GET /api/standee/version → { "version": 7 }
+  Future<int> fetchVersion() async {
+    try {
+      final res = await _dio.get(ApiConstants.versionPath);
+      final data = res.data;
+      if (data is Map && data['version'] != null) {
+        return (data['version'] as num).toInt();
+      }
+      return 0;
+    } catch (_) {
+      return 0;
     }
+  }
 
-    // Gọi API thật
+  Future<List<MediaItem>> fetchMediaList() async {
     final res = await _dio.get(ApiConstants.playlistPath);
     final data = res.data;
     final list = _extractPosterList(data);
@@ -30,7 +35,6 @@ class RemoteMediaDataSource {
         .toList();
   }
 
-  /// API có thể trả nhiều kiểu nested; hàm này cố gắng tìm List đầu tiên chứa poster.
   List<dynamic> _extractPosterList(dynamic value, [int depth = 0]) {
     if (value == null) return const [];
     if (value is List) return value;
@@ -71,14 +75,12 @@ class RemoteMediaDataSource {
     }
     if (url == null || url.isEmpty) return null;
 
-    // Chuẩn hoá absolute URL
     if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('asset:')) {
       final base = ApiConstants.baseUrl.replaceAll(RegExp(r'/$'), '');
       final path = url.startsWith('/') ? url : '/$url';
       url = '$base$path';
     }
 
-    // Loại media
     String typeStr = (json['type'] ?? '').toString().toLowerCase();
     if (typeStr.isEmpty) {
       if (url.endsWith('.mp4') || url.endsWith('.webm')) {
@@ -89,11 +91,12 @@ class RemoteMediaDataSource {
     }
 
     final type = typeStr == 'video' ? MediaType.video : MediaType.image;
-
     final duration =
         (json['duration'] ?? json['displayDuration'] ?? json['durationSeconds']) as int? ?? 10;
+    final id = (json['id'] ?? json['posterId'] ?? '').toString();
 
     return MediaItem(
+      id: id,
       url: url,
       type: type,
       durationSeconds: duration > 0 ? duration : 10,

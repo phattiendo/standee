@@ -16,6 +16,10 @@ abstract final class ApiConstants {
   /// Full URL (nếu cần debug)
   static String get playlistUrl => '$baseUrl$playlistPath';
 
+  /// API version (game-update style: check version → download if changed).
+  static const String versionPath = '/api/standee/version';
+  static String get versionUrl => '$baseUrl$versionPath';
+
   // ============ SDP (Special Dynamic Poster) APIs ============
 
   /// WebSocket endpoint cho Weather realtime
@@ -40,12 +44,12 @@ abstract final class ApiConstants {
   static const int sdpDurationSeconds = 40;
 
   /// Asset path cho SDP background
-  /// - tetve.webp: Theme sáng (cam vàng) - phù hợp ban ngày
-  /// - tetden.webp: Theme tối - phù hợp ban đêm
-  static const String sdpBackgroundLight = 'assets/tetve.webp';
-  static const String sdpBackgroundDark = 'assets/tetden.webp';
+  /// - tetve.jpg: Theme sáng (Tết vè) - phù hợp ban ngày
+  /// - tetden.jpg: Theme tối - phù hợp ban đêm
+  static const String sdpBackgroundLight = 'assets/tetve.jpg';
+  static const String sdpBackgroundDark = 'assets/tetden.jpg';
 
-  /// Background mặc định cho SDP
+  /// Background mặc định cho SDP (Tết vè)
   static const String sdpDefaultBackground = sdpBackgroundLight;
 }
 

@@ -9,6 +9,7 @@ import '../models/media_item_model.dart';
 class LocalMediaDataSource {
   static const String _boxName = 'media_cache_box';
   static const String _keyMediaList = 'media_list';
+  static const String _keyPlaylistVersion = 'playlist_version';
 
   Box<String>? _box;
   bool _initialized = false;
@@ -64,5 +65,17 @@ class LocalMediaDataSource {
     } catch (e) {
       debugPrint('Save cache error: $e');
     }
+  }
+
+  int getPlaylistVersion() {
+    if (_box == null) return 0;
+    final v = _box!.get(_keyPlaylistVersion);
+    if (v == null) return 0;
+    return int.tryParse(v) ?? 0;
+  }
+
+  Future<void> savePlaylistVersion(int version) async {
+    if (_box == null) return;
+    await _box!.put(_keyPlaylistVersion, version.toString());
   }
 }

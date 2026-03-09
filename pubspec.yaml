@@ -37,6 +37,7 @@ dependencies:
 
   # Media
   cached_network_image: ^3.3.1
+  image: ^4.1.7
   
   # Video player - media_kit (FFmpeg-based, better codec support)
   media_kit: ^1.1.11
@@ -57,9 +58,6 @@ dependencies:
   # SVG support
   flutter_svg: ^2.0.10+1
 
-  # Liquid Glass effect
-  liquid_glass_renderer: ^0.2.0-dev.4
-
   # Date/Time formatting
   intl: ^0.20.2
 
@@ -68,6 +66,10 @@ dependencies:
 
   # Background audio
   just_audio: ^0.9.40
+
+  # State management (architecture doc)
+  flutter_bloc: ^8.1.6
+  equatable: ^2.0.5
 
 dev_dependencies:
   flutter_test:
@@ -93,7 +95,6 @@ flutter:
 
   assets:
     - assets/
-    - assets/mock/
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see
